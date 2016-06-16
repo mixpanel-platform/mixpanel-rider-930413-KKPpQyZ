@@ -1,15 +1,160 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/css/reset.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.css">
     <script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
+    <script src="sorttable.js"></script>
   </head>
   <body class="mixpanel-platform-body">
-    <h1>Hello, World!</h1>
+  	<style>
+  		a {
+  			text-decoration: none;
+  		}
+  		.header {
+  			font-size: 20px;
+  			color: gray;
+  			font-weight: bold;
+  			margin-bottom: 15px;
+  		}
+  		.mixpanel-platform-select.event_selector_theme {
+  			max-width: 50px;
+  		}
+  		.mixpanel-platform-select.event_selector_theme .select_button.small, .mixpanel-platform-input-select {
+  			max-width: 50px;
+  			min-width: 0;
+  		}
+  		.mixpanel-platform-select.event_selector_theme .select_button.active+.select_menu.small {
+  			max-width: 96px;
+  			min-width: 0;
+  		}
+  		.dropdown-label {
+  			vertical-align: middle;
+  			position: relative;
+  			display: inline-block;
+  		}
+  		.select {
+  			display: inline-block;
+  			width: 430px;
+  		}
+  		.select.left {
+  			left: 15px;
+  			position: relative;
+  			margin: 10px 0;
+  		}
+  		.select.right {
+  			display: inline-block;
+  			position: relative;
+  			width: 300px;
+  		}
+  		#dateSelect {
+  			display: inline-block;
+  			right: 15px;
+  			vertical-align: middle;
+  		}
+  		#unitSelect, #maxLengthSelect {
+  			margin-left: -50px;
+  		}
+      table.sortable th:not(.sorttable_sorted):not(.sorttable_sorted_reverse):not(.sorttable_nosort):after { 
+        content: "\25B4\25BE";
+      }
+      table tfoot {
+        font-weight: bold;
+      }
+  	</style>
+  	<script id='query'>
+function main() {
+  return Events({
+    from_date: params.from_date,
+    to_date: params.to_date,
+  })
+  .groupBy(['name'], mixpanel.reducer.count())
+  .reduce(function(accums, items) {
+    var results = {};
+    results.events = [];
+    _.each(accums, function(accum) {
+      results.events = _.union(accum.events, results.events);
+      results.count = results.count + accum.count || accum.count;
+    });
+    _.each(items, function(item) {
+      results.count = results.count || 0;
+      results.count += item.value;
+      results.events.push({event_name: item.key[0], count: item.value});
+    });
+    return results;
+  })
+  .map(function(item) {
+    var r = {};
+    r.results = _.chain(item.events)
+                .map(function(i) {
+                  var obj = {};
+                  obj['Event Name'] = i.event_name;
+                  obj.Count = i.count;
+                  obj.Percentage = Math.round(1000 * i.count / item.count) / 10;
+                  return obj;
+                })
+                .sortBy(i => -1 * i.Count)
+                .value();
+    r.count = item.count;
+    return r;
+  });
+}
+  	</script>
+  	<div class="mixpanel-platform-section" style='width:919px'>
+  	  <div class="header" style="display:flex;justify-content:center;align-items:center;width:919px;">Most Common Events</div>
+  	  <div class="dropdown-section">
+  	  	<div class="select left">
+      		<div class="dropdown-label">Date range:</div>
+      		<div id="dateSelect"></div>
+      	</div>
+      </div>
+    </div>
+    <table id='result_table' style='width:943px'></table>
     <script>
-      // Run queries and display results here
+		var script = document.getElementById('query').innerHTML;
+		var dateSelect = $('#dateSelect').MPDatepicker();
+		function runQuery() {
+      MP.api.query('api/2.0/events/list_deleted', {limit: 255}).done(function(hidden_events) {
+  			var params = {
+  			    'from_date': dateSelect.MPDatepicker('value').from.toISOString().slice(0, -14),
+  			    'to_date': dateSelect.MPDatepicker('value').to.toISOString().slice(0, -14),
+  			};
+  			MP.api.jql(script, params).done(function(results) {
+          var event_list = results[0].results;
+          var percentage_total = 0;
+          $("#result_table").empty();
+          $('#result_table').append('<thead>'
+                                  + '<tr>'
+                                  + '<th width="70%" style="text-align:left">' + 'Event Name' + '</th>'
+                                  + '<th width="15%" style="text-align:right">' + 'Count' + '</th>'
+                                  + '<th width="15%" style="text-align:right">' + 'Percentage' + '</th>'
+                                  + '</tr>'
+                                  + '</thead>');
+          $('#result_table').append('<tbody>');
+          _.each(event_list, function(event) {
+            percentage_total += event['Percentage'];
+            $('#result_table').append('<tr>'
+                                    + '<td style="text-align:left">' + event['Event Name'] + '</td>'
+                                    + '<td style="text-align:right">' + event['Count'] + '</td>'
+                                    + '<td style="text-align:right">' + event['Percentage'] + '%</td>'
+                                    + '</tr>');
+          });
+          $('#result_table').append('</tbody>');
+          $('#result_table').append('<tfoot>'
+                                  + '<tr>'
+                                  + '<td style="text-align:left">' + 'Total' + '</td>'
+                                  + '<td style="text-align:right">' + results[0].count + '</td>'
+                                  + '<td style="text-align:right">' + Math.round(percentage_total) + '%</td>'
+                                  + '</tr>'
+                                  + '</tfoot>');
+          var results_table = document.getElementById('result_table');
+          sorttable.makeSortable(results_table);
+  			});
+      });
+		}
+		runQuery();
+		dateSelect.on('change', function() {runQuery();});
     </script>
   </body>
 </html>
